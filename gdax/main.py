@@ -13,8 +13,8 @@ BUY_SELL_SIZE = '0.1'
 WAIT_ORDER_THRESHOLD_MINUTES = 1 # will wait _ mins until order get executed, or cancel
 
 # get last lowest and highest price
-LOW_HIGH_GRANULARITY = 60 # in seconds
-HOURS_BEFORE = 3
+LOW_HIGH_GRANULARITY = 900 # in seconds
+HOURS_BEFORE = 12
 
 BITCOIN = 'BTC-USD'
 OUTPUT_FILE = 'bitcoin-trading-history.xlsx'
@@ -68,7 +68,6 @@ def get_high_low_price(public_client):
     most_low = last_one_hour[0][1]
     most_high = last_one_hour[0][2]
     for x in range(0, (HOURS_BEFORE * 60 * 60) / LOW_HIGH_GRANULARITY):
-        print last_one_hour[x]
         if last_one_hour[x][1] < most_low:
             most_low = last_one_hour[x][1]
         if last_one_hour[x][2] > most_high:
@@ -132,7 +131,7 @@ def buy_sell(auth_client, bids_volume, asks_volume, price, bought_price, bought_
                 bought_price = -1
                 bought_size = filled_size
                 sell_streak = 0
-            
+
     else:
         sell_streak = 0
         buy_streak = 0
