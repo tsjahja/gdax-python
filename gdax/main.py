@@ -10,6 +10,9 @@ from datetime import datetime, timedelta
 VOLUME_ORDER_DIFFERENCE = 10
 STREAK_TRESHOLD = 10
 BUY_SELL_SIZE = '0.1'
+WAIT_ORDER_THRESHOLD_MINUTES = 1 # will wait _ mins until order get executed, or cancel
+
+# get last lowest and highest price
 LOW_HIGH_GRANULARITY = 60 # in seconds
 HOURS_BEFORE = 3
 
@@ -92,7 +95,7 @@ def run(auth_client, public_client, been_bought_streak):
     print 'price:', current_price
     print 'last 1 hour info | low:', low, 'high:', high
     # print 'trade quantity', recent_trade
-    bought_streak = buy_sell(auth_client, bids[1], asks[1], current_price, been_bought_streak[0], been_bought_streak[1], been_bought_streak[2], low, high)
+    bought_streak = buy_sell(auth_client, bids[1], asks[1], current_price, been_bought_streak[0], been_bought_streak[1], been_bought_streak[2], been_bought_streak[3], low, high)
     print bought_streak
     print '--------------------------------'
 
@@ -106,36 +109,55 @@ def run(auth_client, public_client, been_bought_streak):
     write_to_file(time, bids, asks, current_price, action)
     return bought_streak
 
-def buy_sell(auth_client, bids_volume, asks_volume, price, bought_price, buy_streak, sell_streak, low, high):
+def buy_sell(auth_client, bids_volume, asks_volume, price, bought_price, bought_size, buy_streak, sell_streak, low, high):
 
     # price going up potential
     if (bids_volume > VOLUME_ORDER_DIFFERENCE * asks_volume):
         buy_streak += 1
         if (bought_price < 0 and buy_streak >= STREAK_TRESHOLD and price < high):
-            # buy(auth_client, price)
-            print 'BUY', price
-            bought_price = price
-            buy_streak = 0
+            filled_size = buy(auth_client, price)
+            if filled_size > 0:
+                print 'BUY', price
+                bought_price = price
+                bought_size = filled_size
+                buy_streak = 0
 
     # price going down potential
     elif (asks_volume > VOLUME_ORDER_DIFFERENCE * bids_volume):
         sell_streak += 1
         if (bought_price > 0 and bought_price < price and sell_streak >= STREAK_TRESHOLD):
-            # sell(auth_client, price)
-            print 'SELL', price
-            bought_price = -1
-            sell_streak = 0
+            filled_size = sell(auth_client, price, bought_size)
+            if filled_size > 0:
+                print 'SELL', price
+                bought_price = -1
+                bought_size = filled_size
+                sell_streak = 0
+            
     else:
         sell_streak = 0
         buy_streak = 0
 
-    return bought_price, buy_streak, sell_streak
+    return bought_price, bought_size, buy_streak, sell_streak
 
 def buy(auth_client, buy_price):
-    auth_client.buy(price=buy_price, size=BUY_SELL_SIZE, product_id=BITCOIN)
+    order_id = auth_client.buy(price=buy_price, size=BUY_SELL_SIZE, product_id=BITCOIN, type='limit')['id']
+    return check_order(order_id)
 
-def sell(auth_client, sell_price):
-    auth_client.sell(price=sell_price, size=BUY_SELL_SIZE, product_id=BITCOIN)
+def sell(auth_client, sell_price, bought_size):
+    order_id = auth_client.sell(price=sell_price, size=bought_size, product_id=BITCOIN, type='limit')['id']
+    return check_order(order_id)
+
+def check_order(order_id):
+    end_time = datetime.today() + timedelta(minutes=WAIT_ORDER_THRESHOLD_MINUTES)
+    while auth_client.get_order(order_id)['status'] == 'pending' and datetime.today() < end_time:
+        if auth_client.get_order(order_id)['status'] == 'done':
+            break
+
+    if auth_client.get_order(order_id)['status'] == 'pending':
+        auth_client.cancel_order(order_id)
+        print 'Canceling order_id=', order_id
+
+    return auth_client.get_order(order_id)['filled_size']
 
 
 if __name__ == '__main__':
@@ -144,7 +166,7 @@ if __name__ == '__main__':
     # Use the sandbox API (requires a different set of API access credentials)
     auth_client = gdax.AuthenticatedClient(key, b64secret, passphrase, api_url="https://api-public.sandbox.gdax.com")
 
-    bought_streak = -1, 0, 0
+    bought_streak = -1, 0, 0, 0
     while True:
         bought_streak = run(auth_client, public_client, bought_streak)
         time.sleep(1)
