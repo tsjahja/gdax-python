@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timedelta
 
 
-VOLUME_ORDER_DIFFERENCE = 10
+VOLUME_ORDER_DIFFERENCE = 5
 STREAK_TRESHOLD = 10
 BUY_SELL_SIZE = '0.1'
 WAIT_ORDER_THRESHOLD_MINUTES = 1 # will wait _ mins until order get executed, or cancel
@@ -18,6 +18,8 @@ HOURS_BEFORE = 12
 
 BITCOIN = 'BTC-USD'
 OUTPUT_FILE = 'bitcoin-trading-history.xlsx'
+
+
 
 # key = '192671a0ea24774849d376976cf496f0'
 # b64secret = 'cnkkWLCJQRg6xomQuNKvFKA9eU8jgttkMD79QPjcQYJuXYMspqn+YbUJ7oNylANGwjpeF/cxSDjv6FBv7G20Mg=='
@@ -132,10 +134,13 @@ def buy_sell(auth_client, bids_volume, asks_volume, price, bought_price, bought_
             filled_size = sell(auth_client, price, bought_size)
             if float(filled_size) > 0:
                 print 'SELL', price
-                bought_price = -1
-                bought_size = filled_size
-                buy_streak = 0
-                sell_streak = 0
+                if float(filled_size) < float(bought_size):
+                    bought_size = float(filled_size) - float(bought_size)
+                else:
+                    bought_price = -1
+                    bought_size = 0
+                    buy_streak = 0
+                    sell_streak = 0
 
     else:
         sell_streak = 0
