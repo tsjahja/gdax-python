@@ -19,9 +19,10 @@ HOURS_BEFORE = 12
 BITCOIN = 'BTC-USD'
 OUTPUT_FILE = 'bitcoin-trading-history.xlsx'
 
-key = 'key'
-b64secret = 'secret'
-passphrase = 'pass'
+# key = '192671a0ea24774849d376976cf496f0'
+# b64secret = 'cnkkWLCJQRg6xomQuNKvFKA9eU8jgttkMD79QPjcQYJuXYMspqn+YbUJ7oNylANGwjpeF/cxSDjv6FBv7G20Mg=='
+# passphrase = 'gphtdf2hxk8'
+# API_URL = 'https://api-public.sandbox.gdax.com'
 
 
 def create_new_file():
@@ -113,23 +114,27 @@ def buy_sell(auth_client, bids_volume, asks_volume, price, bought_price, bought_
     # price going up potential
     if (bids_volume > VOLUME_ORDER_DIFFERENCE * asks_volume):
         buy_streak += 1
-        if (bought_price < 0 and buy_streak >= STREAK_TRESHOLD and price < high):
+        sell_streak = 0
+        if (bought_price < 0 and buy_streak >= STREAK_TRESHOLD and float(price) < float(high)):
             filled_size = buy(auth_client, price)
-            if filled_size > 0:
+            if float(filled_size) > 0:
                 print 'BUY', price
                 bought_price = price
                 bought_size = filled_size
                 buy_streak = 0
+                sell_streak = 0
 
     # price going down potential
     elif (asks_volume > VOLUME_ORDER_DIFFERENCE * bids_volume):
+        buy_streak = 0
         sell_streak += 1
-        if (bought_price > 0 and bought_price < price and sell_streak >= STREAK_TRESHOLD):
+        if (bought_price > 0 and float(bought_price) < float(price) and sell_streak >= STREAK_TRESHOLD):
             filled_size = sell(auth_client, price, bought_size)
-            if filled_size > 0:
+            if float(filled_size) > 0:
                 print 'SELL', price
                 bought_price = -1
                 bought_size = filled_size
+                buy_streak = 0
                 sell_streak = 0
 
     else:
@@ -139,31 +144,35 @@ def buy_sell(auth_client, bids_volume, asks_volume, price, bought_price, bought_
     return bought_price, bought_size, buy_streak, sell_streak
 
 def buy(auth_client, buy_price):
-    order_id = auth_client.buy(price=buy_price, size=BUY_SELL_SIZE, product_id=BITCOIN, type='limit')['id']
+    order_id = auth_client.buy(price=buy_price, size=BUY_SELL_SIZE, product_id=BITCOIN, type='limit', post_only='true')['id']
     return check_order(order_id)
 
 def sell(auth_client, sell_price, bought_size):
-    order_id = auth_client.sell(price=sell_price, size=bought_size, product_id=BITCOIN, type='limit')['id']
+    order_id = auth_client.sell(price=sell_price, size=bought_size, product_id=BITCOIN, type='limit', post_only='true')['id']
     return check_order(order_id)
 
 def check_order(order_id):
     end_time = datetime.today() + timedelta(minutes=WAIT_ORDER_THRESHOLD_MINUTES)
-    while auth_client.get_order(order_id)['status'] == 'pending' and datetime.today() < end_time:
+    while auth_client.get_order(order_id)['status'] == 'open' and datetime.today() < end_time:
+        print 'waiting for someone to pickup the order, time left=', end_time - datetime.today()
         if auth_client.get_order(order_id)['status'] == 'done':
+            print 'ordered!'
+            filled_size = auth_client.get_order(order_id)['filled_size']
             break
 
-    if auth_client.get_order(order_id)['status'] == 'pending':
-        auth_client.cancel_order(order_id)
+    if auth_client.get_order(order_id)['status'] == 'open':
+        filled_size = auth_client.get_order(order_id)['filled_size']
+        order_id = auth_client.cancel_order(order_id)
         print 'Canceling order_id=', order_id
 
-    return auth_client.get_order(order_id)['filled_size']
+    return filled_size
 
 
 if __name__ == '__main__':
     create_new_file()
     public_client = gdax.PublicClient()
     # Use the sandbox API (requires a different set of API access credentials)
-    auth_client = gdax.AuthenticatedClient(key, b64secret, passphrase, api_url="https://api-public.sandbox.gdax.com")
+    auth_client = gdax.AuthenticatedClient(key, b64secret, passphrase, api_url=API_URL)
 
     bought_streak = -1, 0, 0, 0
     while True:
